@@ -2,7 +2,7 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, emit
 from datetime import datetime
 
@@ -15,7 +15,7 @@ HTML = """
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ssChat Live Live</title>
+<title>ssChat Live</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <style>
 body {
@@ -51,6 +51,11 @@ body {
     font-size:14px;
     position: relative;
     animation: bubble-pop 0.2s ease-out;
+}
+.bubble .username {
+    font-weight:bold;
+    font-size:12px;
+    margin-bottom:4px;
 }
 @keyframes bubble-pop {
     0% { transform: scale(0.9); opacity:0.7; }
@@ -111,41 +116,8 @@ body {
     height:24px;
     display:flex;
     align-items:center;
-    font-size:0;
-}
-.typing-bubble {
-    background:#262626;
-    padding:6px 10px;
-    border-radius:20px;
-    display:flex;
-    align-items:center;
-    gap:4px;
-    max-width:50px;
-    position: relative;
-}
-.typing-bubble::after {
-    content:"";
-    position:absolute;
-    bottom:0;
-    left:-6px;
-    width:0;
-    height:0;
-    border-top:6px solid #262626;
-    border-right:6px solid transparent;
-}
-.typing-bubble span {
-    width:6px;
-    height:6px;
-    background:#fff;
-    border-radius:50%;
-    display:inline-block;
-    animation: bounce 1s infinite;
-}
-.typing-bubble span:nth-child(2) { animation-delay:0.2s; }
-.typing-bubble span:nth-child(3) { animation-delay:0.4s; }
-@keyframes bounce {
-    0%, 80%, 100% { transform: scale(0); opacity:0.3; }
-    40% { transform: scale(1); opacity:1; }
+    font-size:12px;
+    color:#ccc;
 }
 #input-area{
     display:flex;
@@ -178,7 +150,7 @@ button:hover{ opacity:0.85; }
 </style>
 </head>
 <body>
-<div id="header">🌍World Wide Teens Secret hideOut</div>
+<div id="header">🌍 Teens Hangout </div>
 <div id="messages"></div>
 <div id="typing"></div>
 <div id="input-area">
@@ -221,6 +193,10 @@ function displayMessage(data){
     var div = document.createElement("div");
     div.className = data.user === username ? "bubble mine" : "bubble other";
 
+    var nameDiv = document.createElement("div");
+    nameDiv.className = "username";
+    nameDiv.textContent = data.user;
+
     var text = document.createElement("div");
     text.textContent = data.msg;
 
@@ -228,6 +204,7 @@ function displayMessage(data){
     meta.className = "meta";
     meta.textContent = data.time;
 
+    div.appendChild(nameDiv);
     div.appendChild(text);
     div.appendChild(meta);
     messagesDiv.appendChild(div);
@@ -239,7 +216,7 @@ function displayMessage(data){
     }
 }
 
-// Typing indicator
+// Typing indicator with username
 var typingTimeout;
 document.getElementById("msg").addEventListener("input", function(){
     socket.emit("typing", { user: username });
@@ -261,8 +238,16 @@ document.getElementById("msg").addEventListener("keypress", e=>{ if(e.key==="Ent
 socket.on("chat_rx", function(data){ displayMessage(data); saveMessage(data); });
 
 // Typing indicator
-socket.on("typing", function(data){ typingDiv.innerHTML='<div class="typing-bubble"><span></span><span></span><span></span></div>'; });
-socket.on("stop_typing", function(data){ typingDiv.innerHTML=""; });
+var typingUsers = new Set();
+socket.on("typing", function(data){
+    typingUsers.add(data.user);
+    typingDiv.textContent = Array.from(typingUsers).join(", ") + " is typing...";
+});
+socket.on("stop_typing", function(data){
+    typingUsers.delete(data.user);
+    if(typingUsers.size) typingDiv.textContent = Array.from(typingUsers).join(", ") + " is typing...";
+    else typingDiv.textContent = "";
+});
 
 // Join/leave notifications
 socket.emit("join", { user: username });
@@ -276,7 +261,6 @@ loadMessages();
 </html>
 """
 
-# Keep track of connected users
 connected_users = {}
 
 @app.route("/")
