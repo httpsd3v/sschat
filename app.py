@@ -15,7 +15,7 @@ HTML = """
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>InstaChat Live</title>
+<title>ssChat Live Live</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <style>
 body {
@@ -178,7 +178,7 @@ button:hover{ opacity:0.85; }
 </style>
 </head>
 <body>
-<div id="header">🌍 Public Chat</div>
+<div id="header">🌍World Wide Teens Secret hideOut</div>
 <div id="messages"></div>
 <div id="typing"></div>
 <div id="input-area">
