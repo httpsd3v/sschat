@@ -100,7 +100,7 @@ HTML_TEMPLATE = """
 </head>
 <body>
 
-    <div id="header">InstaChat Pro</div>
+    <div id="header">ssChat Pro</div>
     <div id="messages"></div>
 
     <div id="input-area">
