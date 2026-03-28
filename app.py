@@ -1,8 +1,8 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template_string
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template_string, request
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 
 app = Flask(__name__)
@@ -62,6 +62,13 @@ body{
     margin-top:4px;
 }
 
+#typing{
+    padding:0 15px;
+    font-size:12px;
+    opacity:0.7;
+    height:18px;
+}
+
 #input-area{
     display:flex;
     padding:10px;
@@ -91,6 +98,7 @@ button{
 
 <div id="header">🌍 Public Chat</div>
 <div id="messages"></div>
+<div id="typing"></div>
 
 <div id="input-area">
     <input id="msg" placeholder="Message..." autocomplete="off">
@@ -100,15 +108,19 @@ button{
 <script>
 var socket = io();
 var messagesDiv = document.getElementById("messages");
+var typingDiv = document.getElementById("typing");
 var username = localStorage.getItem("username");
 
-if(!username){
+// Prompt for username until provided
+while(!username){
     username = prompt("Enter your username:");
-    if(!username) username = "Guest_" + Math.floor(Math.random()*1000);
-    localStorage.setItem("username", username);
+    if(username) localStorage.setItem("username", username);
 }
 
-// Notification sound only
+// Notification permission
+if(Notification.permission !== "granted") Notification.requestPermission();
+
+// Notification sound
 var ding = new Audio("https://www.soundjay.com/buttons/sounds/button-3.mp3");
 
 // ---------- Load Stored Messages ----------
@@ -145,7 +157,21 @@ function displayMessage(data){
 
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    // Browser notification if from someone else
+    if(data.user !== username && Notification.permission === "granted"){
+        new Notification(data.user, { body: data.msg });
+        ding.play();
+    }
 }
+
+// ---------- Typing ----------
+var typingTimeout;
+document.getElementById("msg").addEventListener("input", function(){
+    socket.emit("typing", { user: username });
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => { socket.emit("stop_typing", { user: username }); }, 1000);
+});
 
 // ---------- Send ----------
 function send(){
@@ -156,27 +182,40 @@ function send(){
         user: username,
         msg: input.value
     });
-
     input.value = "";
+    socket.emit("stop_typing", { user: username });
 }
 
-document.getElementById("msg")
-.addEventListener("keypress", function(e){
+document.getElementById("msg").addEventListener("keypress", function(e){
     if(e.key === "Enter") send();
 });
 
 // ---------- Receive ----------
 socket.on("chat_rx", function(data){
-
     displayMessage(data);
     saveMessage(data);
-
-    if(data.user !== username){
-        ding.play();
-    }
 });
 
-// Load previous messages when page loads
+// ---------- Typing Indicator ----------
+socket.on("typing", function(data){
+    typingDiv.textContent = data.user + " is typing...";
+});
+socket.on("stop_typing", function(data){
+    typingDiv.textContent = "";
+});
+
+// ---------- Join/Leave ----------
+socket.emit("join", { user: username });
+
+socket.on("user_joined", function(data){
+    displayMessage({ user: "System", msg: data.user + " joined the chat", time: data.time });
+});
+
+socket.on("user_left", function(data){
+    displayMessage({ user: "System", msg: data.user + " left the chat", time: data.time });
+});
+
+// Load previous messages
 loadMessages();
 
 </script>
@@ -195,6 +234,25 @@ def chat(data):
         "msg": data["msg"],
         "time": datetime.now().strftime("%H:%M")
     }, broadcast=True)
+
+@socketio.on("typing")
+def typing(data):
+    emit("typing", { "user": data["user"] }, broadcast=True, include_self=False)
+
+@socketio.on("stop_typing")
+def stop_typing(data):
+    emit("stop_typing", { "user": data["user"] }, broadcast=True, include_self=False)
+
+@socketio.on("join")
+def join(data):
+    username = data["user"]
+    join_room("main")
+    emit("user_joined", { "user": username, "time": datetime.now().strftime("%H:%M") }, broadcast=True)
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    # Since we can't get the username directly on disconnect, this could be improved with a session mapping
+    pass  # Optionally track users in a dict to broadcast "user left"
 
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=5001)
